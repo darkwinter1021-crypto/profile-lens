@@ -1,17 +1,27 @@
-﻿# Profile Lens
+# Profile Lens AI
 
-Profile Lens is a Vercel-ready LinkedIn profile analyzer built with Next.js, React, and TypeScript.
+Profile Lens AI is a Vercel-ready LinkedIn profile reviewer built with Next.js, React, and TypeScript.
 
 ## Features
 
-- Overall LinkedIn profile score with role-based weighting.
-- Category scores for headline, About story, experience, projects, skills, proof, readability, and completeness.
-- Target role presets for student builders, developers, founders, designers, marketers, and general profiles.
-- Detected profile sections, strengths, weak spots, priority fixes, and rewrite ideas.
-- Copy and download actions for a complete profile report.
-- Portfolio-ready LinkedIn project description generated from the app itself.
-- Browser-side image analyzer for profile photos or screenshots using canvas pixel checks.
-- Server API route at `/api/analyze-profile` for deployable dynamic behavior.
+- OpenAI-powered profile feedback when `OPENAI_API_KEY` is configured.
+- Local fallback reviewer so the app still works without an API key.
+- Multiple specialist AI perspectives: Recruiter AI, Portfolio AI, Content AI, and ATS AI.
+- Overall score plus category scores for headline clarity, story, proof, projects, skills, and scanability.
+- Copy-ready rewrites for headline, About, project entry, and positioning.
+- Website upgrade ideas generated as part of the report.
+- Copy and download actions for the complete review.
+
+## Environment
+
+Create `.env.local` for local development:
+
+```bash
+OPENAI_API_KEY=your_api_key_here
+OPENAI_MODEL=gpt-5.4
+```
+
+On Vercel, add the same variables in Project Settings > Environment Variables.
 
 ## Run Locally
 
