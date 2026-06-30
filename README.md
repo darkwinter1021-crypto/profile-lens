@@ -11,6 +11,8 @@ Profile Lens AI is a Vercel-ready LinkedIn profile reviewer built with Next.js, 
 - Copy-ready rewrites for headline, About, project entry, and positioning.
 - Website upgrade ideas generated as part of the report.
 - Copy and download actions for the complete review.
+- Server-only OpenAI calls with input limits and basic per-instance rate limiting.
+- Safe API health check at `/api/analyze-profile` that reports whether OpenAI is configured without exposing secrets.
 
 ## Environment
 
@@ -22,6 +24,16 @@ OPENAI_MODEL=gpt-5.4
 ```
 
 On Vercel, add the same variables in Project Settings > Environment Variables.
+
+The OpenAI key must never use a `NEXT_PUBLIC_` prefix. The app reads it only from the server-side API route.
+
+After adding or changing Vercel environment variables, redeploy the project. Check `/api/analyze-profile` with a browser or API client; `openAIConfigured` should be `true` when Vercel can see the server-side key.
+
+## API Safety
+
+- `POST /api/analyze-profile` accepts up to 12,000 profile characters.
+- The API allows 8 analysis requests per minute per detected client IP on each running server instance.
+- `GET /api/analyze-profile` returns safe configuration status and never returns secret values.
 
 ## Run Locally
 

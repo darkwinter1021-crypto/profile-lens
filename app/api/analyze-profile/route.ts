@@ -55,6 +55,22 @@ const metricWords = /\b\d+%|\b\d+\+|\b\d+x\b|users|views|downloads|revenue|saved
 const projectWords = /project|portfolio|built|created|launched|developed|shipped|prototype|case study/gi;
 const skillWords = /javascript|typescript|python|react|next\.?js|node|html|css|sql|excel|figma|canva|analytics|seo|copywriting|ai|machine learning|product design|research|communication/gi;
 
+const MAX_PROFILE_CHARS = 12_000;
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_MAX_REQUESTS = 8;
+
+type RateLimitEntry = {
+  count: number;
+  resetAt: number;
+};
+
+const rateLimitState = globalThis as typeof globalThis & {
+  __profileLensRateLimit?: Map<string, RateLimitEntry>;
+};
+
+const rateLimitStore = rateLimitState.__profileLensRateLimit ?? new Map<string, RateLimitEntry>();
+rateLimitState.__profileLensRateLimit = rateLimitStore;
+
 function clamp(value: number, min = 0, max = 100) {
   return Math.round(Math.min(max, Math.max(min, value)));
 }
@@ -258,6 +274,30 @@ function publicOpenAIError(status: number) {
   return `OpenAI request failed with status ${status}. Using local fallback feedback.`;
 }
 
+function clientRateLimitKey(request: Request) {
+  const forwardedFor = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+  return forwardedFor || request.headers.get("x-real-ip") || request.headers.get("cf-connecting-ip") || "anonymous";
+}
+
+function checkRateLimit(request: Request) {
+  const now = Date.now();
+  const key = clientRateLimitKey(request);
+  const existing = rateLimitStore.get(key);
+
+  if (!existing || existing.resetAt <= now) {
+    rateLimitStore.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return { allowed: true, remaining: RATE_LIMIT_MAX_REQUESTS - 1, resetSeconds: Math.ceil(RATE_LIMIT_WINDOW_MS / 1000) };
+  }
+
+  existing.count += 1;
+  const resetSeconds = Math.max(1, Math.ceil((existing.resetAt - now) / 1000));
+  return {
+    allowed: existing.count <= RATE_LIMIT_MAX_REQUESTS,
+    remaining: Math.max(0, RATE_LIMIT_MAX_REQUESTS - existing.count),
+    resetSeconds,
+  };
+}
+
 function extractOutputText(payload: unknown): string {
   const data = payload as { output_text?: unknown; output?: Array<{ content?: Array<Record<string, unknown>> }> };
   if (typeof data.output_text === "string") return data.output_text;
@@ -376,7 +416,42 @@ async function callOpenAI(profileText: string, role: TargetRole, mode: ReviewMod
   };
 }
 
+export async function GET() {
+  return NextResponse.json({
+    ok: true,
+    openAIConfigured: Boolean(process.env.OPENAI_API_KEY),
+    model: process.env.OPENAI_MODEL || "gpt-5.4",
+    limits: {
+      maxProfileChars: MAX_PROFILE_CHARS,
+      requestsPerMinute: RATE_LIMIT_MAX_REQUESTS,
+    },
+  });
+}
+
 export async function POST(request: Request) {
+  const limit = checkRateLimit(request);
+  if (!limit.allowed) {
+    return NextResponse.json(
+      {
+        error: "Too many profile analyses. Try again shortly.",
+        retryAfterSeconds: limit.resetSeconds,
+      },
+      {
+        status: 429,
+        headers: {
+          "Retry-After": String(limit.resetSeconds),
+          "X-RateLimit-Limit": String(RATE_LIMIT_MAX_REQUESTS),
+          "X-RateLimit-Remaining": "0",
+        },
+      },
+    );
+  }
+
+  const contentLength = Number(request.headers.get("content-length") || 0);
+  if (contentLength > MAX_PROFILE_CHARS * 2) {
+    return NextResponse.json({ error: `Profile input is too large. Keep it under ${MAX_PROFILE_CHARS.toLocaleString()} characters.` }, { status: 413 });
+  }
+
   let body: { profileText?: string; targetRole?: unknown; reviewMode?: unknown };
 
   try {
@@ -388,6 +463,10 @@ export async function POST(request: Request) {
   const profileText = body.profileText?.trim();
   if (!profileText) {
     return NextResponse.json({ error: "Profile text is required." }, { status: 400 });
+  }
+
+  if (profileText.length > MAX_PROFILE_CHARS) {
+    return NextResponse.json({ error: `Profile input is too large. Keep it under ${MAX_PROFILE_CHARS.toLocaleString()} characters.` }, { status: 413 });
   }
 
   const targetRole: TargetRole = typeof body.targetRole === "string" && body.targetRole in roleLabels ? (body.targetRole as TargetRole) : "student-builder";
