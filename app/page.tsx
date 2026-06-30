@@ -481,7 +481,7 @@ export default function Home() {
           <div className="api-status-strip">
             <div className={`api-status-chip ${apiStatus?.openAIConfigured ? "live" : "fallback"}`}>
               <Zap size={14} aria-hidden="true" />
-              <span>{apiStatus?.openAIConfigured ? `OpenAI ready: ${apiStatus.model}` : "Fallback mode until Vercel env is set"}</span>
+              <span>{apiStatus?.openAIConfigured ? `OpenAI configured: ${apiStatus.model}` : "Fallback mode until Vercel env is set"}</span>
             </div>
             <button className="mini-link-button" type="button" onClick={() => void refreshApiStatus()}>
               <RefreshCw size={14} aria-hidden="true" />

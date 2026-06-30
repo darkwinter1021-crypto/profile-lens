@@ -267,9 +267,14 @@ function stripCodeFence(text: string) {
   return text.trim().replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();
 }
 
-function publicOpenAIError(status: number) {
+function publicOpenAIError(status: number, code?: string) {
   if (status === 401) return "OpenAI authentication failed. Check the server environment variable.";
-  if (status === 429) return "OpenAI rate limit reached. Try again later or check billing limits.";
+  if (status === 403) return "OpenAI access is blocked for this key. Check project permissions and billing.";
+  if (status === 404 || code === "model_not_found") return "The configured OpenAI model is not available for this key. Update OPENAI_MODEL in Vercel.";
+  if (status === 429) {
+    if (code === "insufficient_quota") return "OpenAI quota is not available for this API key. Add billing or use a key with available credits.";
+    return "OpenAI rate limit reached. Try again later or check billing limits.";
+  }
   if (status >= 500) return "OpenAI is temporarily unavailable. Using local fallback feedback.";
   return `OpenAI request failed with status ${status}. Using local fallback feedback.`;
 }
@@ -403,7 +408,14 @@ async function callOpenAI(profileText: string, role: TargetRole, mode: ReviewMod
   });
 
   if (!response.ok) {
-    throw new Error(publicOpenAIError(response.status));
+    let code: string | undefined;
+    try {
+      const errorPayload = (await response.json()) as { error?: { code?: unknown; type?: unknown } };
+      code = typeof errorPayload.error?.code === "string" ? errorPayload.error.code : typeof errorPayload.error?.type === "string" ? errorPayload.error.type : undefined;
+    } catch {
+      code = undefined;
+    }
+    throw new Error(publicOpenAIError(response.status, code));
   }
 
   const payload = await response.json();
