@@ -1,7 +1,7 @@
 "use client";
 
 import type { CSSProperties, FormEvent } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
@@ -14,6 +14,7 @@ import {
   FileText,
   Gauge,
   GraduationCap,
+  History,
   Layers,
   Lightbulb,
   Megaphone,
@@ -24,6 +25,7 @@ import {
   ShieldCheck,
   Sparkles,
   Target,
+  Trash2,
   UserRound,
   Users,
   Zap,
@@ -74,6 +76,35 @@ type AiReport = {
   reviewers: Reviewer[];
   websiteIdeas: string[];
 };
+
+type ApiStatus = {
+  ok: boolean;
+  openAIConfigured: boolean;
+  model: string;
+  limits: {
+    maxProfileChars: number;
+    requestsPerMinute: number;
+  };
+};
+
+type SavedAnalysis = {
+  id: string;
+  createdAt: string;
+  name: string;
+  headline: string;
+  score: number;
+  scoreLabel: string;
+  aiPowered: boolean;
+  model: string;
+  profileText: string;
+  targetRole: TargetRole;
+  reviewMode: ReviewMode;
+  report: AiReport;
+};
+
+const historyStorageKey = "profile-lens-analysis-history-v1";
+const maxSavedAnalyses = 6;
+const defaultMaxProfileChars = 12_000;
 
 const roles: Array<{ key: TargetRole; label: string; icon: LucideIcon }> = [
   { key: "student-builder", label: "Student", icon: GraduationCap },
@@ -215,6 +246,62 @@ export default function Home() {
   const [reviewMode, setReviewMode] = useState<ReviewMode>("board");
   const [report, setReport] = useState<AiReport>(emptyReport);
   const [status, setStatus] = useState("Ready");
+  const [notice, setNotice] = useState("");
+  const [apiStatus, setApiStatus] = useState<ApiStatus | null>(null);
+  const [history, setHistory] = useState<SavedAnalysis[]>([]);
+
+  const maxProfileChars = apiStatus?.limits.maxProfileChars ?? defaultMaxProfileChars;
+  const isOverLimit = profileText.length > maxProfileChars;
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(historyStorageKey);
+      if (saved) {
+        setHistory((JSON.parse(saved) as SavedAnalysis[]).slice(0, maxSavedAnalyses));
+      }
+    } catch {
+      setHistory([]);
+    }
+
+    void refreshApiStatus();
+  }, []);
+
+  async function refreshApiStatus() {
+    try {
+      const response = await fetch("/api/analyze-profile", { method: "GET" });
+      if (!response.ok) throw new Error("Status check failed");
+      setApiStatus((await response.json()) as ApiStatus);
+    } catch {
+      setApiStatus(null);
+    }
+  }
+
+  function saveAnalysis(nextReport: AiReport, text: string) {
+    const entry: SavedAnalysis = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      createdAt: new Date().toISOString(),
+      name: nextReport.name,
+      headline: nextReport.headline,
+      score: nextReport.overallScore,
+      scoreLabel: nextReport.scoreLabel,
+      aiPowered: nextReport.aiPowered,
+      model: nextReport.model,
+      profileText: text,
+      targetRole,
+      reviewMode,
+      report: nextReport,
+    };
+
+    setHistory((current) => {
+      const next = [entry, ...current.filter((item) => item.headline !== entry.headline || item.name !== entry.name)].slice(0, maxSavedAnalyses);
+      try {
+        window.localStorage.setItem(historyStorageKey, JSON.stringify(next));
+      } catch {
+        setNotice("History is full or unavailable in this browser.");
+      }
+      return next;
+    });
+  }
 
   async function runReview(event?: FormEvent<HTMLFormElement>, overrideText?: string) {
     event?.preventDefault();
@@ -222,10 +309,18 @@ export default function Home() {
 
     if (!textToAnalyze.trim()) {
       setStatus("Needs text");
+      setNotice("Paste profile text first.");
+      return;
+    }
+
+    if (textToAnalyze.length > maxProfileChars) {
+      setStatus("Too large");
+      setNotice(`Profile input is too large. Keep it under ${maxProfileChars.toLocaleString()} characters.`);
       return;
     }
 
     setStatus("Reviewing");
+    setNotice("");
 
     try {
       const response = await fetch("/api/analyze-profile", {
@@ -233,17 +328,24 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ profileText: textToAnalyze, targetRole, reviewMode }),
       });
+      const payload = await response.json().catch(() => null);
 
       if (!response.ok) {
-        setStatus("Failed");
+        const errorPayload = payload as { error?: string; retryAfterSeconds?: number } | null;
+        const message = errorPayload?.error || "Review failed. Try again.";
+        setStatus(response.status === 429 ? "Rate limited" : response.status === 413 ? "Too large" : "Failed");
+        setNotice(errorPayload?.retryAfterSeconds ? `${message} Retry in ${errorPayload.retryAfterSeconds}s.` : message);
         return;
       }
 
-      const nextReport = (await response.json()) as AiReport;
+      const nextReport = payload as AiReport;
       setReport(nextReport);
+      saveAnalysis(nextReport, textToAnalyze);
       setStatus(nextReport.aiPowered ? "AI complete" : "Demo complete");
+      setNotice(nextReport.setupMessage || "");
     } catch {
       setStatus("Failed");
+      setNotice("Could not reach the analyzer API.");
     }
   }
 
@@ -256,6 +358,22 @@ export default function Home() {
     setProfileText("");
     setReport(emptyReport);
     setStatus("Ready");
+    setNotice("");
+  }
+
+  function loadHistoryItem(item: SavedAnalysis) {
+    setProfileText(item.profileText);
+    setTargetRole(item.targetRole);
+    setReviewMode(item.reviewMode);
+    setReport(item.report);
+    setStatus("Loaded");
+    setNotice("");
+  }
+
+  function clearHistory() {
+    setHistory([]);
+    window.localStorage.removeItem(historyStorageKey);
+    setStatus("History cleared");
   }
 
   async function copyText(text: string, nextStatus: string) {
@@ -360,6 +478,16 @@ export default function Home() {
             <FileText size={15} aria-hidden="true" />
             LinkedIn profile text
           </label>
+          <div className="api-status-strip">
+            <div className={`api-status-chip ${apiStatus?.openAIConfigured ? "live" : "fallback"}`}>
+              <Zap size={14} aria-hidden="true" />
+              <span>{apiStatus?.openAIConfigured ? `OpenAI ready: ${apiStatus.model}` : "Fallback mode until Vercel env is set"}</span>
+            </div>
+            <button className="mini-link-button" type="button" onClick={() => void refreshApiStatus()}>
+              <RefreshCw size={14} aria-hidden="true" />
+              <span>Check</span>
+            </button>
+          </div>
           <textarea
             id="profileText"
             rows={15}
@@ -367,9 +495,14 @@ export default function Home() {
             onChange={(event) => setProfileText(event.target.value)}
             placeholder="Paste the visible profile text: name, headline, About, experience, projects, education, skills, proof, and achievements."
           />
+          <div className={`input-meter ${isOverLimit ? "over-limit" : ""}`}>
+            <span>{profileText.length.toLocaleString()} / {maxProfileChars.toLocaleString()} characters</span>
+            <span>{apiStatus ? `${apiStatus.limits.requestsPerMinute} analyses/minute` : "Checking API limits"}</span>
+          </div>
+          {notice ? <div className="notice-box">{notice}</div> : null}
 
           <div className="button-row">
-            <button className="primary-button" type="submit" disabled={status === "Reviewing"}>
+            <button className="primary-button" type="submit" disabled={status === "Reviewing" || isOverLimit}>
               <Bot size={17} aria-hidden="true" />
               <span>Run AI review</span>
             </button>
@@ -432,6 +565,33 @@ export default function Home() {
                   <span>{item}</span>
                 </div>
               ))}
+            </div>
+          </section>
+
+          <section className="panel history-panel">
+            <div className="panel-heading compact-heading">
+              <div>
+                <p className="section-label">Saved locally</p>
+                <h2>Analysis history</h2>
+              </div>
+              <button className="mini-icon-button" type="button" onClick={clearHistory} disabled={!history.length} aria-label="Clear saved analysis history">
+                <Trash2 size={16} aria-hidden="true" />
+              </button>
+            </div>
+            <div className="history-list">
+              {history.length ? (
+                history.map((item) => (
+                  <button className="history-item" type="button" key={item.id} onClick={() => loadHistoryItem(item)}>
+                    <History size={15} aria-hidden="true" />
+                    <span>
+                      <strong>{item.name}</strong>
+                      <em>{item.score}/100 · {item.scoreLabel} · {item.aiPowered ? item.model : "Fallback"}</em>
+                    </span>
+                  </button>
+                ))
+              ) : (
+                <p className="empty-history">Run an analysis to save it in this browser.</p>
+              )}
             </div>
           </section>
         </aside>

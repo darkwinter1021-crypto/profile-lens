@@ -94,9 +94,13 @@ p {
 .icon-button,
 .primary-button,
 .secondary-button,
+.mini-link-button,
+.mini-icon-button,
 .role-button,
 .mode-button,
 .ai-status-box,
+.api-status-strip,
+.api-status-chip,
 .quick-item,
 .idea-item,
 .rewrite-card {
@@ -159,13 +163,17 @@ p {
 .status-pill.demo-complete,
 .status-pill.copied,
 .status-pill.downloaded,
-.status-pill.rewrites-copied {
+.status-pill.rewrites-copied,
+.status-pill.loaded,
+.status-pill.history-cleared {
   color: var(--green);
 }
 
 .status-pill.failed,
 .status-pill.copy-failed,
-.status-pill.needs-text {
+.status-pill.needs-text,
+.status-pill.rate-limited,
+.status-pill.too-large {
   color: var(--red);
 }
 
@@ -195,6 +203,7 @@ p {
 .input-panel,
 .score-panel,
 .quick-panel,
+.history-panel,
 .reviewer-panel,
 .category-panel,
 .rewrite-panel,
@@ -241,7 +250,9 @@ p {
 .mode-button,
 .icon-button,
 .primary-button,
-.secondary-button {
+.secondary-button,
+.mini-link-button,
+.mini-icon-button {
   min-height: 40px;
   justify-content: center;
   gap: 8px;
@@ -278,7 +289,9 @@ p {
 }
 
 .secondary-button,
-.icon-button {
+.icon-button,
+.mini-link-button,
+.mini-icon-button {
   border: 1px solid var(--line);
   background: var(--white);
   color: var(--ink);
@@ -286,6 +299,8 @@ p {
 
 .secondary-button:hover,
 .icon-button:hover,
+.mini-link-button:hover,
+.mini-icon-button:hover,
 .role-button:hover,
 .mode-button:hover {
   border-color: var(--line-strong);
@@ -310,6 +325,50 @@ button:disabled {
   font-weight: 900;
 }
 
+.api-status-strip {
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.api-status-chip {
+  min-height: 34px;
+  flex: 1 1 auto;
+  gap: 7px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 10px;
+  color: #33424f;
+  font-size: 0.84rem;
+  font-weight: 900;
+}
+
+.api-status-chip.live {
+  border-color: rgba(22, 132, 95, 0.26);
+  background: #ecf9f4;
+  color: var(--green);
+}
+
+.api-status-chip.fallback {
+  border-color: rgba(183, 121, 31, 0.24);
+  background: #fff7e8;
+  color: var(--amber);
+}
+
+.mini-link-button {
+  min-height: 34px;
+  flex: 0 0 auto;
+  padding: 0 10px;
+  font-size: 0.82rem;
+}
+
+.mini-icon-button {
+  width: 34px;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0;
+}
+
 textarea {
   width: 100%;
   min-height: 448px;
@@ -327,6 +386,32 @@ textarea {
 textarea:focus {
   border-color: var(--teal);
   box-shadow: 0 0 0 3px rgba(13, 139, 120, 0.14);
+}
+
+.input-meter {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.input-meter.over-limit {
+  color: var(--red);
+}
+
+.notice-box {
+  margin-top: 10px;
+  border: 1px solid rgba(183, 121, 31, 0.24);
+  border-radius: 8px;
+  padding: 10px 11px;
+  background: #fff7e8;
+  color: #805b15;
+  line-height: 1.45;
+  font-size: 0.88rem;
+  font-weight: 800;
 }
 
 .button-row {
@@ -429,6 +514,67 @@ textarea:focus {
 
 .quick-list {
   gap: 10px;
+}
+
+.history-list {
+  display: grid;
+  gap: 8px;
+}
+
+.history-item {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 8px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--panel-soft);
+  color: #354553;
+  cursor: pointer;
+  text-align: left;
+}
+
+.history-item:hover {
+  border-color: var(--line-strong);
+}
+
+.history-item svg {
+  margin-top: 3px;
+  color: var(--teal-dark);
+}
+
+.history-item span {
+  min-width: 0;
+}
+
+.history-item strong,
+.history-item em {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-item strong {
+  color: var(--ink);
+  font-size: 0.88rem;
+}
+
+.history-item em {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.empty-history {
+  border: 1px dashed var(--line-strong);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--panel-soft);
+  font-size: 0.88rem;
 }
 
 .quick-item,
@@ -712,6 +858,7 @@ li {
   .input-panel,
   .score-panel,
   .quick-panel,
+  .history-panel,
   .reviewer-panel,
   .category-panel,
   .rewrite-panel,
@@ -724,12 +871,20 @@ li {
   }
 
   .top-actions,
-  .button-row {
+  .button-row,
+  .api-status-strip,
+  .input-meter {
     width: 100%;
   }
 
   .top-actions > *,
   .button-row > * {
     flex: 1 1 150px;
+  }
+
+  .api-status-strip,
+  .input-meter {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
