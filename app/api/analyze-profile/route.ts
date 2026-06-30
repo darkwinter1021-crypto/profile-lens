@@ -251,6 +251,13 @@ function stripCodeFence(text: string) {
   return text.trim().replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();
 }
 
+function publicOpenAIError(status: number) {
+  if (status === 401) return "OpenAI authentication failed. Check the server environment variable.";
+  if (status === 429) return "OpenAI rate limit reached. Try again later or check billing limits.";
+  if (status >= 500) return "OpenAI is temporarily unavailable. Using local fallback feedback.";
+  return `OpenAI request failed with status ${status}. Using local fallback feedback.`;
+}
+
 function extractOutputText(payload: unknown): string {
   const data = payload as { output_text?: unknown; output?: Array<{ content?: Array<Record<string, unknown>> }> };
   if (typeof data.output_text === "string") return data.output_text;
@@ -356,7 +363,7 @@ async function callOpenAI(profileText: string, role: TargetRole, mode: ReviewMod
   });
 
   if (!response.ok) {
-    throw new Error(`OpenAI request failed with status ${response.status}`);
+    throw new Error(publicOpenAIError(response.status));
   }
 
   const payload = await response.json();
